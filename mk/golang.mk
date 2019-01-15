@@ -7,7 +7,7 @@ GOCC ?= go
 GOTAGS ?=
 unexport GOFLAGS
 GOFLAGS ?=
-GOTFLAGS ?=
+GOTFLAGS ?= -timeout 30m
 
 # match Go's default GOPATH behaviour
 export GOPATH ?= $(shell $(GOCC) env GOPATH)

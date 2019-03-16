@@ -9,14 +9,14 @@ import (
 	filestore "github.com/ipfs/go-ipfs/filestore"
 	pin "github.com/ipfs/go-ipfs/pin"
 
-	balanced "gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/balanced"
-	ihelper "gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/helpers"
-	trickle "gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/trickle"
-	chunk "gx/ipfs/QmR4QQVkBZsZENRjYFVi8dEtPL3daZRNKk24m4r6WKJHNm/go-ipfs-chunker"
-	cid "gx/ipfs/QmR8BauakNcBa3RbE4nbQu76PDiJgoQgz8AJdhJuiU4TAw/go-cid"
-	cmds "gx/ipfs/QmWGm4AbZEbnmdgVTza52MSNpEmBdFVqzmAysRbjrRyGbH/go-ipfs-cmds"
-	cmdkit "gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
-	mh "gx/ipfs/QmerPMzPk1mJVowm8KgmoknWa4yCYvvugMPsgWmDNUvDLW/go-multihash"
+	cid "github.com/ipfs/go-cid"
+	chunk "github.com/ipfs/go-ipfs-chunker"
+	cmdkit "github.com/ipfs/go-ipfs-cmdkit"
+	cmds "github.com/ipfs/go-ipfs-cmds"
+	balanced "github.com/ipfs/go-unixfs/importer/balanced"
+	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	trickle "github.com/ipfs/go-unixfs/importer/trickle"
+	mh "github.com/multiformats/go-multihash"
 )
 
 var urlStoreCmd = &cmds.Command{
@@ -77,6 +77,11 @@ time.
 		useTrickledag, _ := req.Options[trickleOptionName].(bool)
 		dopin, _ := req.Options[pinOptionName].(bool)
 
+		enc, err := cmdenv.GetCidEncoder(req)
+		if err != nil {
+			return err
+		}
+
 		hreq, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return err
@@ -111,7 +116,11 @@ time.
 			layout = trickle.Layout
 		}
 
-		root, err := layout(dbp.New(chk))
+		db, err := dbp.New(chk)
+		if err != nil {
+			return err
+		}
+		root, err := layout(db)
 		if err != nil {
 			return err
 		}
@@ -125,7 +134,7 @@ time.
 		}
 
 		return cmds.EmitOnce(res, &BlockStat{
-			Key:  c.String(),
+			Key:  enc.Encode(c),
 			Size: int(hres.ContentLength),
 		})
 	},

@@ -9,14 +9,15 @@ import (
 
 	cmdenv "github.com/ipfs/go-ipfs/core/commands/cmdenv"
 	ncmd "github.com/ipfs/go-ipfs/core/commands/name"
-	coreiface "github.com/ipfs/go-ipfs/core/coreapi/interface"
-	options "github.com/ipfs/go-ipfs/core/coreapi/interface/options"
 	ns "github.com/ipfs/go-ipfs/namesys"
-	nsopts "github.com/ipfs/go-ipfs/namesys/opts"
-	path "gx/ipfs/QmNYPETsdAu2uQ1k9q9S1jYEGURaLHV6cbYRSVFVRftpF8/go-path"
 
-	cmds "gx/ipfs/QmWGm4AbZEbnmdgVTza52MSNpEmBdFVqzmAysRbjrRyGbH/go-ipfs-cmds"
-	cmdkit "gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
+	cidenc "github.com/ipfs/go-cidutil/cidenc"
+	cmdkit "github.com/ipfs/go-ipfs-cmdkit"
+	cmds "github.com/ipfs/go-ipfs-cmds"
+	path "github.com/ipfs/go-path"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	options "github.com/ipfs/interface-go-ipfs-core/options"
+	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 )
 
 const (
@@ -82,6 +83,23 @@ Resolve the value of an IPFS DAG path:
 		name := req.Arguments[0]
 		recursive, _ := req.Options[resolveRecursiveOptionName].(bool)
 
+		var enc cidenc.Encoder
+		switch {
+		case !cmdenv.CidBaseDefined(req):
+			// Not specified, check the path.
+			enc, err = cmdenv.CidEncoderFromPath(name)
+			if err == nil {
+				break
+			}
+			// Nope, fallback on the default.
+			fallthrough
+		default:
+			enc, err = cmdenv.GetCidEncoder(req)
+			if err != nil {
+				return err
+			}
+		}
+
 		// the case when ipns is resolved step by step
 		if strings.HasPrefix(name, "/ipns/") && !recursive {
 			rc, rcok := req.Options[resolveDhtRecordCountOptionName].(uint)
@@ -122,13 +140,12 @@ Resolve the value of an IPFS DAG path:
 			return err
 		}
 
-		if rp.Remainder() != "" {
-			// TODO: js expects this error. Instead of fixing this
-			// error, we should fix #5703.
-			return fmt.Errorf("found non-link at given path")
+		encoded := "/" + rp.Namespace() + "/" + enc.Encode(rp.Cid())
+		if remainder := rp.Remainder(); remainder != "" {
+			encoded += "/" + remainder
 		}
 
-		return cmds.EmitOnce(res, &ncmd.ResolvedPath{Path: path.Path("/" + rp.Namespace() + "/" + rp.Cid().String())})
+		return cmds.EmitOnce(res, &ncmd.ResolvedPath{Path: path.Path(encoded)})
 	},
 	Encoders: cmds.EncoderMap{
 		cmds.Text: cmds.MakeTypedEncoder(func(req *cmds.Request, w io.Writer, rp *ncmd.ResolvedPath) error {

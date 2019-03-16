@@ -5,11 +5,11 @@ import (
 	"io"
 
 	"github.com/ipfs/go-ipfs/core/commands/cmdenv"
-	coreiface "github.com/ipfs/go-ipfs/core/coreapi/interface"
-	"github.com/ipfs/go-ipfs/core/coreapi/interface/options"
 
-	"gx/ipfs/QmWGm4AbZEbnmdgVTza52MSNpEmBdFVqzmAysRbjrRyGbH/go-ipfs-cmds"
-	"gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
+	"github.com/ipfs/go-ipfs-cmdkit"
+	"github.com/ipfs/go-ipfs-cmds"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/options"
 )
 
 var ObjectPatchCmd = &cmds.Command{
@@ -167,6 +167,10 @@ Remove a Merkle-link from the given object and return the hash of the result.
 	},
 }
 
+const (
+	createOptionName = "create"
+)
+
 var patchAddLinkCmd = &cmds.Command{
 	Helptext: cmdkit.HelpText{
 		Tagline: "Add a link to a given object.",
@@ -189,7 +193,7 @@ to a file containing 'bar', and returns the hash of the new object.
 		cmdkit.StringArg("ref", true, false, "IPFS object to add link to."),
 	},
 	Options: []cmdkit.Option{
-		cmdkit.BoolOption("create", "p", "Create intermediary nodes."),
+		cmdkit.BoolOption(createOptionName, "p", "Create intermediary nodes."),
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
 		api, err := cmdenv.GetApi(env, req)
@@ -209,7 +213,7 @@ to a file containing 'bar', and returns the hash of the new object.
 			return err
 		}
 
-		create, _ := req.Options["create"].(bool)
+		create, _ := req.Options[createOptionName].(bool)
 		if err != nil {
 			return err
 		}

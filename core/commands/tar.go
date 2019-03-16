@@ -8,10 +8,10 @@ import (
 	"github.com/ipfs/go-ipfs/core/commands/cmdenv"
 	tar "github.com/ipfs/go-ipfs/tar"
 
-	"gx/ipfs/QmNYPETsdAu2uQ1k9q9S1jYEGURaLHV6cbYRSVFVRftpF8/go-path"
-	dag "gx/ipfs/QmTQdH4848iTVCJmKXYyRiK72HufWTLYQQ8iN3JaQ8K1Hq/go-merkledag"
-	"gx/ipfs/QmWGm4AbZEbnmdgVTza52MSNpEmBdFVqzmAysRbjrRyGbH/go-ipfs-cmds"
-	"gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
+	"github.com/ipfs/go-ipfs-cmdkit"
+	"github.com/ipfs/go-ipfs-cmds"
+	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-path"
 )
 
 var TarCmd = &cmds.Command{
@@ -43,6 +43,11 @@ represent it.
 			return err
 		}
 
+		enc, err := cmdenv.GetCidEncoder(req)
+		if err != nil {
+			return err
+		}
+
 		it := req.Files.Entries()
 		file, err := cmdenv.GetFileArg(it)
 		if err != nil {
@@ -58,7 +63,7 @@ represent it.
 
 		return cmds.EmitOnce(res, &AddEvent{
 			Name: it.Name(),
-			Hash: c.String(),
+			Hash: enc.Encode(c),
 		})
 	},
 	Type: AddEvent{},

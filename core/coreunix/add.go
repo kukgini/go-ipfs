@@ -7,26 +7,24 @@ import (
 	"io"
 	"os"
 	gopath "path"
-	"path/filepath"
 	"strconv"
 
-	"github.com/ipfs/go-ipfs/core"
-	coreiface "github.com/ipfs/go-ipfs/core/coreapi/interface"
 	"github.com/ipfs/go-ipfs/pin"
 
-	"gx/ipfs/QmP9eu5X5Ax8169jNWqAJcc42mdZgzLR1aKCEzqhNoBLKk/go-mfs"
-	"gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs"
-	"gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/balanced"
-	ihelper "gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/helpers"
-	"gx/ipfs/QmQXze9tG878pa4Euya4rrDpyTNX3kQe4dhCaBzBozGgpe/go-unixfs/importer/trickle"
-	chunker "gx/ipfs/QmR4QQVkBZsZENRjYFVi8dEtPL3daZRNKk24m4r6WKJHNm/go-ipfs-chunker"
-	"gx/ipfs/QmR6YMs8EkXQLXNwQKxLnQp2VBZSepoEJ8KCZAyanJHhJu/go-ipfs-posinfo"
-	"gx/ipfs/QmR8BauakNcBa3RbE4nbQu76PDiJgoQgz8AJdhJuiU4TAw/go-cid"
-	bstore "gx/ipfs/QmS2aqUZLJp8kF1ihE5rvDGE5LvmKDPnx32w9Z1BW9xLV5/go-ipfs-blockstore"
-	dag "gx/ipfs/QmTQdH4848iTVCJmKXYyRiK72HufWTLYQQ8iN3JaQ8K1Hq/go-merkledag"
-	"gx/ipfs/QmXWZCd8jfaHmt4UDSnjKmGcrQMw95bDGWqEeVLVJjoANX/go-ipfs-files"
-	ipld "gx/ipfs/QmcKKBwfz6FyQdHR2jsXrrF6XeSBXYL86anmWNewpFpoF5/go-ipld-format"
-	logging "gx/ipfs/QmcuXC5cxs79ro2cUuHs4HQ2bkDLJUYokwL8aivcX6HW3C/go-log"
+	"github.com/ipfs/go-cid"
+	bstore "github.com/ipfs/go-ipfs-blockstore"
+	chunker "github.com/ipfs/go-ipfs-chunker"
+	"github.com/ipfs/go-ipfs-files"
+	"github.com/ipfs/go-ipfs-posinfo"
+	ipld "github.com/ipfs/go-ipld-format"
+	logging "github.com/ipfs/go-log"
+	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-mfs"
+	"github.com/ipfs/go-unixfs"
+	"github.com/ipfs/go-unixfs/importer/balanced"
+	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	"github.com/ipfs/go-unixfs/importer/trickle"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 )
 
 var log = logging.Logger("coreunix")
@@ -123,11 +121,15 @@ func (adder *Adder) add(reader io.Reader) (ipld.Node, error) {
 		CidBuilder: adder.CidBuilder,
 	}
 
+	db, err := params.New(chnk)
+	if err != nil {
+		return nil, err
+	}
 	if adder.Trickle {
-		return trickle.Layout(params.New(chnk))
+		return trickle.Layout(db)
 	}
 
-	return balanced.Layout(params.New(chnk))
+	return balanced.Layout(db)
 }
 
 // RootNode returns the root node of the Added.
@@ -270,90 +272,6 @@ func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
 	default:
 		return fmt.Errorf("unrecognized fsn type: %#v", fsn)
 	}
-}
-
-// Add builds a merkledag node from a reader, adds it to the blockstore,
-// and returns the key representing that node.
-// If you want to pin it, use NewAdder() and Adder.PinRoot().
-func Add(n *core.IpfsNode, r io.Reader) (string, error) {
-	return AddWithContext(n.Context(), n, r)
-}
-
-// AddWithContext does the same as Add, but with a custom context.
-func AddWithContext(ctx context.Context, n *core.IpfsNode, r io.Reader) (string, error) {
-	defer n.Blockstore.PinLock().Unlock()
-
-	fileAdder, err := NewAdder(ctx, n.Pinning, n.Blockstore, n.DAG)
-	if err != nil {
-		return "", err
-	}
-
-	node, err := fileAdder.add(r)
-	if err != nil {
-		return "", err
-	}
-
-	return node.Cid().String(), nil
-}
-
-// AddR recursively adds files in |path|.
-func AddR(n *core.IpfsNode, root string) (key string, err error) {
-	defer n.Blockstore.PinLock().Unlock()
-
-	stat, err := os.Lstat(root)
-	if err != nil {
-		return "", err
-	}
-
-	f, err := files.NewSerialFile(root, false, stat)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
-	if err != nil {
-		return "", err
-	}
-
-	err = fileAdder.addFileNode(filepath.Base(root), f)
-	if err != nil {
-		return "", err
-	}
-
-	nd, err := fileAdder.Finalize()
-	if err != nil {
-		return "", err
-	}
-
-	return nd.String(), nil
-}
-
-// AddWrapped adds data from a reader, and wraps it with a directory object
-// to preserve the filename.
-// Returns the path of the added file ("<dir hash>/filename"), the DAG node of
-// the directory, and and error if any.
-func AddWrapped(n *core.IpfsNode, r io.Reader, filename string) (string, ipld.Node, error) {
-	fileAdder, err := NewAdder(n.Context(), n.Pinning, n.Blockstore, n.DAG)
-	if err != nil {
-		return "", nil, err
-	}
-	fileAdder.Wrap = true
-
-	defer n.Blockstore.PinLock().Unlock()
-
-	err = fileAdder.addFileNode(filename, files.NewReaderFile(r))
-	if err != nil {
-		return "", nil, err
-	}
-
-	dagnode, err := fileAdder.Finalize()
-	if err != nil {
-		return "", nil, err
-	}
-
-	c := dagnode.Cid()
-	return gopath.Join(c.String(), filename), dagnode, nil
 }
 
 func (adder *Adder) addNode(node ipld.Node, path string) error {
